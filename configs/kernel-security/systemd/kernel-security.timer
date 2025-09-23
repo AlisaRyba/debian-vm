@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily Kernel Security Scan
+Requires=kernel-security.service
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+AccuracySec=1min
+
+OnBootSec=5min
+
+[Install]
+WantedBy=timers.target

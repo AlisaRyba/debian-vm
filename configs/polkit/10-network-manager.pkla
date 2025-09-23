@@ -1,0 +1,13 @@
+[Network Manager for root only]
+Identity=unix-user:*
+Action=org.freedesktop.NetworkManager.*
+ResultAny=no
+ResultInactive=no
+ResultActive=no
+
+[Network Manager allow root]
+Identity=unix-user:root
+Action=org.freedesktop.NetworkManager.*
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

@@ -1,0 +1,6 @@
+[Package Management for users]
+Identity=unix-group:pkgusers
+Action=org.debian.apt.*;org.debian.dpkg.*
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

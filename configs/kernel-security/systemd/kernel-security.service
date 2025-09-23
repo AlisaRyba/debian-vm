@@ -1,0 +1,25 @@
+[Unit]
+Description=Kernel Security Automation Service
+After=network.target multi-user.target
+Requires=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/etc/kernel-security/automator.sh run
+User=root
+Group=root
+LoggingMaxBytes=1M
+LoggingMaxFiles=3
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+
+[Install]
+WantedBy=multi-user.target
