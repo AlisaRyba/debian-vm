@@ -1,39 +1,39 @@
 ## 📁 Структура проекта:
 
 **debian-vm/**
-**├── Vagrantfile** # Конфигурация виртуальной машины
-**├── configs/** # Конфигурационные файлы
+**├── Vagrantfile** Конфигурация виртуальной машины
+**├── configs/** Конфигурационные файлы
 **│ ├── nginx/**
-**│ │ └── chroot-default.conf** # Конфиг Nginx для chroot
+**│ │ └── chroot-default.conf** Конфиг Nginx для chroot
 **│ ├── polkit/**
-**│ │ ├── 10-network-manager.pkla** # Правила Network Manager
-**│ │ └── 20-package-management.pkla** # Правила управления пакетами
+**│ │ ├── 10-network-manager.pkla** Правила Network Manager
+**│ │ └── 20-package-management.pkla** Правила управления пакетами
 **│ ├── sudoers/**
-**│ │ ├── helpdesk** # Права helpdesk пользователя
-**│ │ ├── netadmin** # Права netadmin пользователя  
-**│ │ ├── pkg-management** # Права управления пакетами
-**│ │ └── sysadmin** # Права sysadmin пользователя
+**│ │ ├── helpdesk** Права helpdesk пользователя
+**│ │ ├── netadmin** Права netadmin пользователя  
+**│ │ ├── pkg-management** Права управления пакетами
+**│ │ └── sysadmin** Права sysadmin пользователя
 **│ ├── sysctl/**
-**│ │ └── 99-kernel-security.conf** # Настройки безопасности ядра
-**│ └── kernel-security/** #Конфиги системы безопасности ядра
-**│ │ ├── actions/** # Скрипты действий для системы безопасности
-**│ │ │ ├── immediate-fixes.sh** # Немедленные исправления безопасности
-**│ │ │ ├── kernel-recompile.sh** # Скрипт перекомпиляции ядра
-**│ │ │ └── reboot-required.sh** # Действия, требующие перезагрузки
-**│ │ ├── systemd/** # Systemd службы автоматизации
-**│ │ │ ├── kernel-security.service** # Служба проверки безопасности
-**│ │ │ └── kernel-security.timer** # Таймер запланированной проверки
-**│ │ ├── automator.sh** # Основной скрипт автоматора
-**│ │ └── config.cfg** # Конфигурация автоматора
-**└── scripts/** # Скрипты автоматизации
-**├── common.sh** # Общие функции и утилиты
-**├── main.sh** # Главный скрипт запуска
-**├── setup_base.sh** # Базовая настройка системы
-**├── setup_users.sh** # Настройка пользователей и групп
-**├── setup_services.sh** # Настройка сервисов (polkit, iptables, chroot)
-**├── setup_security.sh** # Настройка безопасности
-**├── setup_kernel_security_automation.sh** # Автоматизация безопасности ядра
-**└── setup_kernel_hardening.sh** # Усиление безопасности ядра
+**│ │ └── 99-kernel-security.conf** Настройки безопасности ядра
+**│ └── kernel-security/** Конфиги системы безопасности ядра
+**│ │ ├── actions/** Скрипты действий для системы безопасности
+**│ │ │ ├── immediate-fixes.sh** Немедленные исправления безопасности
+**│ │ │ ├── kernel-recompile.sh** Скрипт перекомпиляции ядра
+**│ │ │ └── reboot-required.sh** Действия, требующие перезагрузки
+**│ │ ├── systemd/** Systemd службы автоматизации
+**│ │ │ ├── kernel-security.service** Служба проверки безопасности
+**│ │ │ └── kernel-security.timer** Таймер запланированной проверки
+**│ │ ├── automator.sh** Основной скрипт автоматора
+**│ │ └── config.cfg** Конфигурация автоматора
+**└── scripts/** Скрипты автоматизации
+**├── common.sh** Общие функции и утилиты
+**├── main.sh** Главный скрипт запуска
+**├── setup_base.sh** Базовая настройка системы
+**├── setup_users.sh** Настройка пользователей и групп
+**├── setup_services.sh** Настройка сервисов (polkit, iptables, chroot)
+**├── setup_security.sh** Настройка безопасности
+**├── setup_kernel_security_automation.sh** Автоматизация безопасности ядра
+**└── setup_kernel_hardening.sh** Усиление безопасности ядра
 
 ## Возможности
 
