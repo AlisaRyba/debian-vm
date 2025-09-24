@@ -3,7 +3,6 @@ Vagrant.configure("2") do |config|
   config.vm.hostname = "OS-security"
   config.ssh.insert_key = false
 
-  # Используем rsync для синхронизации
   config.vm.synced_folder "scripts", "/vagrant/scripts", type: "rsync"
   config.vm.synced_folder "configs", "/vagrant/configs", type: "rsync"
 

@@ -47,11 +47,6 @@ setup_ssh() {
     if [ ! -f "$private_key" ]; then
         ssh-keygen -t rsa -b 4096 -f "$private_key" -N "" -C "vagrant@$(hostname)" >/dev/null 2>&1
     fi
-    
-    # if ! grep -q "8.8.8.8" /etc/resolv.conf 2>/dev/null; then
-        # echo -e "nameserver 8.8.8.8\\nnameserver 8.8.4.4" > /etc/resolv.conf
-        # chattr +i /etc/resolv.conf 2>/dev/null
-    # fi
 }
 
 setup_network

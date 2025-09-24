@@ -1,7 +1,7 @@
 source /vagrant/scripts/common.sh
 
 setup_kernel_hardening_checker() {
-    log_message "Установка kernel-hardening-checker"
+    log_message "Установка kernel-hardening-checker"setup_kernel_hardening
         
     if ! command -v git &> /dev/null; then
         run_command "apt-get install -y git" "Установка git"

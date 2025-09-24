@@ -30,7 +30,6 @@ setup_access_control() {
         log_message "Sudoers pkg-management скопирован"
     fi
     
-    # Настройка ACL
     for user_dir in /home/*; do
         [ -d "$user_dir" ] && setfacl -R -m g:user:--- "$user_dir" 2>/dev/null
     done
@@ -40,38 +39,48 @@ setup_access_control() {
 
 setup_iptables() {
     log_message "Настройка iptables"
+    
+    local modules=("ip_tables" "iptable_filter" "iptable_nat" "nf_conntrack" "x_tables")
+    for module in "${modules[@]}"; do
+        modprobe "$module" 2>/dev/null && echo "$module" >> /etc/modules
+    done
 
-    update-alternatives --set iptables /usr/sbin/iptables-legacy
-    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-    update-alternatives --set arptables /usr/sbin/arptables-legacy
-    update-alternatives --set ebtables /usr/sbin/ebtables-legacy
+    local alternatives=("iptables" "ip6tables" "arptables" "ebtables")
+    for alt in "${alternatives[@]}"; do
+        [ -x "/usr/sbin/${alt}-legacy" ] && update-alternatives --set "$alt" "/usr/sbin/${alt}-legacy" 2>/dev/null || true
+    done
+
+    if ! iptables -L >/dev/null 2>&1; then
+        apt-get install -y iptables-persistent netfilter-persistent
+        log_message "iptables установлен"
+    fi
+
+    log_message "Применение безопасных правил iptables"
     
     iptables -F && iptables -t nat -F
     iptables -X && iptables -t nat -X
     
-    iptables -P INPUT DROP
-    iptables -P FORWARD DROP
+    iptables -P INPUT ACCEPT
+    iptables -P FORWARD ACCEPT  
     iptables -P OUTPUT ACCEPT
-    
+
     iptables -A INPUT -i lo -j ACCEPT
-    iptables -A OUTPUT -o lo -j ACCEPT
-    iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-    iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-    
+    iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+    iptables -A INPUT -p tcp --dport 22 -j ACCEPT 
+
     iptables -A INPUT -p tcp --dport 80 -j DROP
     iptables -A INPUT -p tcp --dport 443 -j DROP
     iptables -A INPUT -s 10.210.19.0/24 -p tcp --dport 443 -j ACCEPT
     iptables -A INPUT -s 10.210.19.0/24 -p tcp --dport 8080 -j ACCEPT
-    
-    iptables -t nat -A POSTROUTING -s 10.210.19.0/24 -o eth0 -j MASQUERADE
-    iptables -A FORWARD -s 10.210.19.0/24 -o eth0 -j ACCEPT
-    iptables -A FORWARD -d 10.210.19.0/24 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-    
-    if command -v netfilter-persistent >/dev/null 2>&1; then
-        netfilter-persistent save
-    else
-        iptables-save > /etc/iptables/rules.v4 2>/dev/null
-    fi
+
+    iptables -t nat -A POSTROUTING -s 10.210.19.0/24 -o eth0 -j MASQUERADE 2>/dev/null || true
+    iptables -A FORWARD -s 10.210.19.0/24 -o eth0 -j ACCEPT 2>/dev/null || true
+    iptables -A FORWARD -d 10.210.19.0/24 -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+
+    mkdir -p /etc/iptables
+    iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+
+    log_message "Правила iptables применены"
 }
 
 setup_chroot() {

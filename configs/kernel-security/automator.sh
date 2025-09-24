@@ -30,22 +30,19 @@ run_security_scan() {
     REPORT_RETENTION_CLEAN=$(echo "${REPORT_RETENTION_DAYS:-90}" | tr -d '\r')
     
     if ! command -v kernel-hardening-checker >/dev/null 2>&1; then
-        log_message "ОШИБКА: kernel-hardening-checker не найден"
+        log_message "Ошибка: kernel-hardening-checker не найден"
         return 1
     fi
+
+    local scan_file="$LOG_DIR/scan-$TIMESTAMP.txt"
+    kernel-hardening-checker -a > "$scan_file" 2>&1 || true
     
-    SCAN_RESULT=$(kernel-hardening-checker -a 2>&1)
-    echo "$SCAN_RESULT" > "$LOG_DIR/scan-$TIMESTAMP.log"
+    SCAN_RESULT=$(cat "$scan_file")
     
     OK_COUNT=$(echo "$SCAN_RESULT" | grep -oP "'OK' - \K[0-9]+" | head -1)
     FAIL_COUNT=$(echo "$SCAN_RESULT" | grep -oP "'FAIL' - \K[0-9]+" | head -1)
     
     log_message "Сканирование завершено: OK=$OK_COUNT, FAIL=$FAIL_COUNT"
-    
-    if [ "$FAIL_COUNT" -gt "$FAIL_THRESHOLD_CLEAN" ]; then
-        log_message "КРИТИЧЕСКАЯ УЯЗВИМОСТЬ: Большое количество уязвимостей ($FAIL_COUNT), применение немедленных исправлений"
-        apply_immediate_fixes
-    fi
     
     generate_report "$OK_COUNT" "$FAIL_COUNT"
 }
@@ -57,7 +54,7 @@ apply_immediate_fixes() {
         bash "$ACTIONS_DIR/immediate-fixes.sh"
         log_message "Немедленные исправления успешно применены"
     else
-        log_message "ПРЕДУПРЕЖДЕНИЕ: immediate-fixes.sh не найден"
+        log_message "Предупреждение: immediate-fixes.sh не найден"
     fi
 }
 
@@ -75,6 +72,7 @@ generate_report() {
     local fail_count=$2
     
     REPORT_FILE="$REPORT_DIR/weekly-report-$(date +%Y%m%d).md"
+    local scan_file="$LOG_DIR/scan-$(date +%Y%m%d_%H%M%S).txt"
     
     cat > "$REPORT_FILE" << EOF
 # Еженедельный отчет о безопасности ядра - $(date +%Y-%m-%d)
@@ -89,15 +87,8 @@ generate_report() {
 **Система:** $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')
 
 \`\`\`
-$(kernel-hardening-checker -a | grep "FAIL:" | head -10)
+Полный отчет: $scan_file
 \`\`\`
-
-\`\`\`
-$(tail -10 "$LOG_DIR/security-$(date +%Y%m%d).log" | grep "Applying\|Applied")
-\`\`\`
-
-1. **Немедленные действия:** $(if [ $fail_count -gt 50 ]; then echo "Применить критические исправления немедленно"; else echo "Просмотреть неудачные элементы"; fi)
-2. **Плановые работы:** Применить исправления, требующие перезагрузки
 
 - Следующее автоматическое сканирование: $(date -d "+${SCAN_INTERVAL:-24} hours")
 - Отчет создан: Kernel Security Automator v1.0
