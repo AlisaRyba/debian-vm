@@ -12,51 +12,16 @@ log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_DIR/security-$(date +%Y%m%d).log"
 }
 
-run_security_scan() {
-    log_message "Запуск комплексного сканирования безопасности ядра"
+cleanup_old_files() {
+    log_message "Очистка старых журналов и отчетов"
     
-    if ! command -v bc >/dev/null 2>&1; then
-        apt-get install -y bc >/dev/null 2>&1 || log_message "Ошибка установки bc"
-    fi
-
-    if ! command -v dos2unix >/dev/null 2>&1; then
-        apt-get install -y dos2unix >/dev/null 2>&1 || log_message "Ошибка установки dos2unix"
-    fi
-
-    find /etc/kernel-security -type f -name "*.sh" -exec dos2unix {} \; 2>/dev/null || true
-    find /etc/kernel-security -type f -name "*.cfg" -exec dos2unix {} \; 2>/dev/null || true
+    local LOG_RETENTION_CLEAN="${LOG_RETENTION_DAYS:-30}"
+    local REPORT_RETENTION_CLEAN="${REPORT_RETENTION_DAYS:-90}"
     
-    FAIL_THRESHOLD_CLEAN="${FAIL_THRESHOLD:-50}"
-    LOG_RETENTION_CLEAN="${LOG_RETENTION_DAYS:-30}"
-    REPORT_RETENTION_CLEAN="${REPORT_RETENTION_DAYS:-90}"
+    find "$LOG_DIR" -name "*.log" -mtime +"$LOG_RETENTION_CLEAN" -delete 2>/dev/null || true
+    find "$REPORT_DIR" -name "*.md" -mtime +"$REPORT_RETENTION_CLEAN" -delete 2>/dev/null || true
     
-    if ! command -v kernel-hardening-checker >/dev/null 2>&1; then
-        log_message "Ошибка: kernel-hardening-checker не найден"
-        return 1
-    fi
-
-    local scan_file="$LOG_DIR/scan-$TIMESTAMP.txt"
-    log_message "Сохранение сканирования в: $scan_file"
-    
-    if kernel-hardening-checker -a > "$scan_file" 2>&1; then
-        log_message "Сканирование выполнено успешно"
-    else
-        log_message "Сканирование завершено с ошибками"
-    fi
-    
-    local ok_count=0
-    local fail_count=0
-    
-    if [ -f "$scan_file" ]; then
-        ok_count=$(grep -c "OK:" "$scan_file" || echo "0")
-        fail_count=$(grep -c "FAIL:" "$scan_file" || echo "0")
-    fi
-    
-    log_message "Сканирование завершено: OK=$ok_count, FAIL=$fail_count"
-    
-    generate_report "$ok_count" "$fail_count" "$scan_file"
-    
-    return 0
+    log_message "Очистка завершена"
 }
 
 apply_immediate_fixes() {
@@ -117,10 +82,67 @@ EOF
     log_message "Отчет создан: $REPORT_FILE"
 }
 
+run_security_scan() {
+    log_message "Запуск комплексного сканирования безопасности ядра"
+    
+    if ! command -v bc >/dev/null 2>&1; then
+        apt-get install -y bc >/dev/null 2>&1 || log_message "Ошибка установки bc"
+    fi
+
+    if ! command -v dos2unix >/dev/null 2>&1; then
+        apt-get install -y dos2unix >/dev/null 2>&1 || log_message "Ошибка установки dos2unix"
+    fi
+
+    find /etc/kernel-security -type f -name "*.sh" -exec dos2unix {} \; 2>/dev/null || true
+    find /etc/kernel-security -type f -name "*.cfg" -exec dos2unix {} \; 2>/dev/null || true
+    
+    FAIL_THRESHOLD_CLEAN="${FAIL_THRESHOLD:-50}"
+    LOG_RETENTION_CLEAN="${LOG_RETENTION_DAYS:-30}"
+    REPORT_RETENTION_CLEAN="${REPORT_RETENTION_DAYS:-90}"
+    
+    if ! command -v kernel-hardening-checker >/dev/null 2>&1; then
+        log_message "Ошибка: kernel-hardening-checker не найден"
+        return 1
+    fi
+
+    local scan_file="$LOG_DIR/scan-$TIMESTAMP.txt"
+    log_message "Сохранение сканирования в: $scan_file"
+    
+    if kernel-hardening-checker -a > "$scan_file" 2>&1; then
+        log_message "Сканирование выполнено успешно"
+    else
+        log_message "Сканирование завершено с ошибками"
+    fi
+    
+    local ok_count=0
+    local fail_count=0
+    
+    if [ -f "$scan_file" ]; then
+        ok_count=$(grep -c "OK:" "$scan_file" || echo "0")
+        fail_count=$(grep -c "FAIL:" "$scan_file" || echo "0")
+    fi
+    
+    log_message "Сканирование завершено: OK=$ok_count, FAIL=$fail_count"
+    
+    generate_report "$ok_count" "$fail_count" "$scan_file"
+    
+    return 0
+}
+
 case "${1:-run}" in
     "run")
         run_security_scan
+
+        if [ "$fail_count" -gt "${FAIL_THRESHOLD:-50}" ]; then
+            log_message "Критический уровень уязвимостей ($fail_count), применяем исправления"
+            apply_immediate_fixes
+        fi
+        
         cleanup_old_files
+        ;;
+    "fix")
+        apply_immediate_fixes
+        apply_reboot_required_fixes
         ;;
     "fix")
         apply_immediate_fixes
