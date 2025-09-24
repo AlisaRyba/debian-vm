@@ -34,6 +34,7 @@
 - **├── setup_services.sh** # Настройка сервисов (polkit, iptables, chroot)
 - **├── setup_security.sh** # Настройка безопасности
 - **├── setup_kernel_security_automation.sh** # Автоматизация безопасности ядра
+- **├── systemd-targets-setup.sh** # Установка Multi-user.target по умолчанию
 - **└── setup_kernel_hardening.sh** # Усиление безопасности ядра
 
 ## Возможности

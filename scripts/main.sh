@@ -23,3 +23,6 @@ bash setup_kernel_hardening.sh
 
 log_message "Запуск setup_kernel_security_automation.sh"
 bash setup_kernel_security_automation.sh
+
+log_message "Запуск systemd-targets-setup.sh"
+bash systemd-targets-setup.sh
