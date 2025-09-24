@@ -121,6 +121,9 @@ run_security_scan() {
         ok_count=$(grep -c "OK:" "$scan_file" || echo "0")
         fail_count=$(grep -c "FAIL:" "$scan_file" || echo "0")
     fi
+
+    echo "OK=$ok_count" > /tmp/scan_results.txt
+    echo "FAIL=$fail_count" >> /tmp/scan_results.txt
     
     log_message "Сканирование завершено: OK=$ok_count, FAIL=$fail_count"
     
@@ -132,17 +135,17 @@ run_security_scan() {
 case "${1:-run}" in
     "run")
         run_security_scan
-
-        if [ "$fail_count" -gt "${FAIL_THRESHOLD:-50}" ]; then
-            log_message "Критический уровень уязвимостей ($fail_count), применяем исправления"
-            apply_immediate_fixes
+        
+        if [ -f "/tmp/scan_results.txt" ]; then
+            source /tmp/scan_results.txt
+            if [ "$FAIL" -gt "${FAIL_THRESHOLD:-50}" ]; then
+                log_message "Критический уровень уязвимостей ($FAIL), применяем исправления"
+                apply_immediate_fixes
+            fi
+            rm -f /tmp/scan_results.txt
         fi
         
         cleanup_old_files
-        ;;
-    "fix")
-        apply_immediate_fixes
-        apply_reboot_required_fixes
         ;;
     "fix")
         apply_immediate_fixes
