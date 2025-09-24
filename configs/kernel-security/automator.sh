@@ -4,6 +4,8 @@ REPORT_DIR="/etc/kernel-security/reports"
 ACTIONS_DIR="/etc/kernel-security/actions"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+mkdir -p "$LOG_DIR" "$REPORT_DIR" "$ACTIONS_DIR"
+
 [ -f "$CONFIG" ] && source "$CONFIG"
 
 log_message() {
@@ -14,20 +16,19 @@ run_security_scan() {
     log_message "Запуск комплексного сканирования безопасности ядра"
     
     if ! command -v bc >/dev/null 2>&1; then
-        apt-get install -y bc
+        apt-get install -y bc >/dev/null 2>&1 || log_message "Ошибка установки bc"
     fi
 
     if ! command -v dos2unix >/dev/null 2>&1; then
-        apt-get install -y dos2unix
+        apt-get install -y dos2unix >/dev/null 2>&1 || log_message "Ошибка установки dos2unix"
     fi
 
-    dos2unix /etc/kernel-security/* 2>/dev/null || true
-    dos2unix /etc/kernel-security/actions/* 2>/dev/null || true
-    dos2unix /etc/systemd/system/kernel-security.* 2>/dev/null || true
+    find /etc/kernel-security -type f -name "*.sh" -exec dos2unix {} \; 2>/dev/null || true
+    find /etc/kernel-security -type f -name "*.cfg" -exec dos2unix {} \; 2>/dev/null || true
     
-    FAIL_THRESHOLD_CLEAN=$(echo "${FAIL_THRESHOLD:-50}" | tr -d '\r')
-    LOG_RETENTION_CLEAN=$(echo "${LOG_RETENTION_DAYS:-30}" | tr -d '\r')
-    REPORT_RETENTION_CLEAN=$(echo "${REPORT_RETENTION_DAYS:-90}" | tr -d '\r')
+    FAIL_THRESHOLD_CLEAN="${FAIL_THRESHOLD:-50}"
+    LOG_RETENTION_CLEAN="${LOG_RETENTION_DAYS:-30}"
+    REPORT_RETENTION_CLEAN="${REPORT_RETENTION_DAYS:-90}"
     
     if ! command -v kernel-hardening-checker >/dev/null 2>&1; then
         log_message "Ошибка: kernel-hardening-checker не найден"
@@ -35,16 +36,27 @@ run_security_scan() {
     fi
 
     local scan_file="$LOG_DIR/scan-$TIMESTAMP.txt"
-    kernel-hardening-checker -a > "$scan_file" 2>&1 || true
+    log_message "Сохранение сканирования в: $scan_file"
     
-    SCAN_RESULT=$(cat "$scan_file")
+    if kernel-hardening-checker -a > "$scan_file" 2>&1; then
+        log_message "Сканирование выполнено успешно"
+    else
+        log_message "Сканирование завершено с ошибками"
+    fi
     
-    OK_COUNT=$(echo "$SCAN_RESULT" | grep -oP "'OK' - \K[0-9]+" | head -1)
-    FAIL_COUNT=$(echo "$SCAN_RESULT" | grep -oP "'FAIL' - \K[0-9]+" | head -1)
+    local ok_count=0
+    local fail_count=0
     
-    log_message "Сканирование завершено: OK=$OK_COUNT, FAIL=$FAIL_COUNT"
+    if [ -f "$scan_file" ]; then
+        ok_count=$(grep -c "OK:" "$scan_file" || echo "0")
+        fail_count=$(grep -c "FAIL:" "$scan_file" || echo "0")
+    fi
     
-    generate_report "$OK_COUNT" "$FAIL_COUNT"
+    log_message "Сканирование завершено: OK=$ok_count, FAIL=$fail_count"
+    
+    generate_report "$ok_count" "$fail_count" "$scan_file"
+    
+    return 0
 }
 
 apply_immediate_fixes() {
@@ -70,40 +82,39 @@ apply_reboot_required_fixes() {
 generate_report() {
     local ok_count=$1
     local fail_count=$2
+    local scan_file=$3
     
     REPORT_FILE="$REPORT_DIR/weekly-report-$(date +%Y%m%d).md"
-    local scan_file="$LOG_DIR/scan-$(date +%Y%m%d_%H%M%S).txt"
+    
+    local compliance_percent="0.0"
+    local total_checks=$((ok_count + fail_count))
+    
+    if [ "$total_checks" -gt 0 ]; then
+        compliance_percent=$(echo "scale=1; $ok_count * 100 / $total_checks" | bc 2>/dev/null || echo "0.0")
+    fi
     
     cat > "$REPORT_FILE" << EOF
 # Еженедельный отчет о безопасности ядра - $(date +%Y-%m-%d)
 
-- **Всего проверок:** $((ok_count + fail_count))
+- **Всего проверок:** $total_checks
 - **Пройдено:** $ok_count
 - **Не пройдено:** $fail_count
-- **Уровень соответствия:** $(printf "%.1f%%" $(echo "scale=1; $ok_count/($ok_count+$fail_count)*100" | bc))
+- **Уровень соответствия:** ${compliance_percent}%
 
 **Дата сканирования:** $(date)  
 **Версия ядра:** $(uname -r)  
-**Система:** $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')
+**Система:** $(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')
 
-\`\`\`
-Полный отчет: $scan_file
-\`\`\`
+## Статистика
+- Файл сканирования: $scan_file
+- Следующая проверка: $(date -d "+${SCAN_INTERVAL:-24} hours")
 
-- Следующее автоматическое сканирование: $(date -d "+${SCAN_INTERVAL:-24} hours")
-- Отчет создан: Kernel Security Automator v1.0
+## Топ-5 критических проблем
+$(grep "FAIL:" "$scan_file" | head -5 || echo "Нет критических проблем")
+
 EOF
 
-    log_message "Подробный отчет создан: $REPORT_FILE"
-}
-
-cleanup_old_files() {
-    log_message "Очистка старых журналов и отчетов"
-    
-    find "$LOG_DIR" -name "*.log" -mtime +"$LOG_RETENTION_CLEAN" -delete
-    find "$REPORT_DIR" -name "*.md" -mtime +"$REPORT_RETENTION_CLEAN" -delete
-    
-    log_message "Очистка завершена"
+    log_message "Отчет создан: $REPORT_FILE"
 }
 
 case "${1:-run}" in
@@ -116,7 +127,7 @@ case "${1:-run}" in
         apply_reboot_required_fixes
         ;;
     "report")
-        generate_report "0" "0"
+        generate_report "0" "0" ""
         ;;
     "test")
         echo "Testing automation system - OK"
@@ -129,3 +140,5 @@ case "${1:-run}" in
         exit 1
         ;;
 esac
+
+exit 0

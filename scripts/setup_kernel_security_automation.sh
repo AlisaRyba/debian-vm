@@ -4,7 +4,7 @@ setup_kernel_security_automation() {
     log_message "Установка автоматизированной системы безопасности ядра"
     
     if [ ! -f "/vagrant/configs/kernel-security/automator.sh" ]; then
-        log_message "ОШИБКА: Конфиги не найдены в /vagrant/configs/kernel-security/"
+        log_message "Ошибка: Конфиги не найдены в /vagrant/configs/kernel-security/"
         return 1
     fi
 

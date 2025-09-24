@@ -9,36 +9,12 @@ if [ -f "/vagrant/configs/sysctl/99-kernel-security.conf" ]; then
     cp "/vagrant/configs/sysctl/99-kernel-security.conf" "$SECURITY_CONF"
     log_message "Конфигурация безопасности ядра применена из configs/sysctl/"
 else
-    log_message "Предупреждение: файл конфигурации не найден, создаем стандартный"
-    cat > "$SECURITY_CONF" << 'EOF'
-# Базовые настройки безопасности ядра
-net.core.bpf_jit_harden = 2
-net.ipv4.conf.all.accept_redirects = 0
-net.ipv4.conf.default.accept_redirects = 0
-net.ipv6.conf.all.accept_redirects = 0
-net.ipv6.conf.default.accept_redirects = 0
-net.ipv4.conf.default.accept_source_route = 0
-net.ipv6.conf.all.accept_ra = 0
-net.ipv6.conf.default.accept_ra = 0
-kernel.kptr_restrict = 2
-kernel.dmesg_restrict = 1
-kernel.kexec_load_disabled = 1
-kernel.unprivileged_bpf_disabled = 1
-user.max_user_namespaces = 0
-dev.tty.ldisc_autoload = 0
-kernel.modules_disabled = 1
-kernel.sysrq = 0
-fs.protected_fifos = 2
-kernel.yama.ptrace_scope = 3
-kernel.oops_limit = 100
-kernel.warn_limit = 100
-EOF
+    log_message "Предупреждение: файл конфигурации не найден"
 fi
 
 sysctl -p "$SECURITY_CONF"
 log_message "Настройки безопасности ядра применены"
 
-# Настройка GRUB
 if [ -f "$GRUB_CONF" ]; then
     cp "$GRUB_CONF" "${GRUB_CONF}.backup.$(date +%Y%m%d)"
     
