@@ -147,95 +147,95 @@
 
 ## Запуск виртуальной машины
 
-`cd debian-vm`
-`vagrant up`
+- `cd debian-vm`
+- `vagrant up`
 
 ## Подключение по SSH
 
-`vagrant ssh`
+- `vagrant ssh`
 
 ## Перезапуск с повторной настройкой
 
-`vagrant reload --provision`
+- `vagrant reload --provision`
 
 # Проверка работы
 
 ## Проверка пользователей
 
-`vagrant ssh -c "getent passwd | grep -E '(sysadmin|helpdesk|netadmin)'"`
+- `vagrant ssh -c "getent passwd | grep -E '(sysadmin|helpdesk|netadmin)'"`
 
 ## Проверка безопасности ядра
 
-`vagrant ssh -c "sysctl net.core.bpf_jit_harden kernel.kptr_restrict"`
+- `vagrant ssh -c "sysctl net.core.bpf_jit_harden kernel.kptr_restrict"`
 
 ## Проверка сервисов
 
-`vagrant ssh -c "systemctl status nginx"`
-`vagrant ssh -c "iptables -L -n"`
+- `vagrant ssh -c "systemctl status nginx"`
+- `vagrant ssh -c "iptables -L -n"`
 
 ## Проверка chroot
 
-`vagrant ssh -c "ls -la /srv/chroot/"`
+- `vagrant ssh -c "ls -la /srv/chroot/"`
 
 # Работа с setup_kernel_security_automation
 
 ## Проверка отчета
 
-`vagrant ssh -c "cat /etc/kernel-security/reports/weekly-report-20250921.md"`
+- `vagrant ssh -c "cat /etc/kernel-security/reports/weekly-report-20250921.md"`
 
 ## Проверка работы службы
 
-`vagrant ssh -c "systemctl status kernel-security.timer"`
-`vagrant ssh -c "systemctl status kernel-security.service"`
+- `vagrant ssh -c "systemctl status kernel-security.timer"`
+- `vagrant ssh -c "systemctl status kernel-security.service"`
 
 ## Запуск повторного сканирования
 
-`vagrant ssh -c "/etc/kernel-security/automator.sh run"`
+- `vagrant ssh -c "/etc/kernel-security/automator.sh run"`
 
 ## Проверка настроек безопасности
 
-`vagrant ssh -c "sysctl net.core.bpf_jit_harden kernel.kptr_restrict kernel.dmesg_restrict"`
+- `vagrant ssh -c "sysctl net.core.bpf_jit_harden kernel.kptr_restrict kernel.dmesg_restrict"`
 
 ## Запуск исправлений
 
-`vagrant ssh -c "/etc/kernel-security/automator.sh fix"`
+- `vagrant ssh -c "/etc/kernel-security/automator.sh fix"`
 
 ## Просмотр логов автоматора
 
-`vagrant ssh -c "journalctl -u kernel-security.service -f"`
+- `vagrant ssh -c "journalctl -u kernel-security.service -f"`
 
 ## Ручной запуск перекомпиляции ядра
 
-`vagrant ssh -c "sudo /etc/kernel-security/actions/kernel-recompile.sh"`
+- `vagrant ssh -c "sudo /etc/kernel-security/actions/kernel-recompile.sh"`
 
 # Проверка корректности настройки PAM
 
 ## Проверка лимитов пользователей
 
-`vagrant ssh -c "sudo -u john bash -c 'ulimit -u'"`
-`vagrant ssh -c "sudo -u john bash -c 'ulimit -Hu'"`
-`vagrant ssh -c "sudo -u sysadmin bash -c 'ulimit -u'"`
-`vagrant ssh -c "sudo -u netadmin bash -c 'ulimit -u'"`
+- `vagrant ssh -c "sudo -u john bash -c 'ulimit -u'"`
+- `vagrant ssh -c "sudo -u john bash -c 'ulimit -Hu'"`
+- `vagrant ssh -c "sudo -u sysadmin bash -c 'ulimit -u'"`
+- `vagrant ssh -c "sudo -u netadmin bash -c 'ulimit -u'"`
 
 ## Проверка PAM cracklib парольной политики
 
-`vagrant ssh -c "sudo cat /etc/pam.d/common-password | head -10"`
-`vagrant ssh -c "echo 'john:123' | sudo chpasswd"`
+- `vagrant ssh -c "sudo cat /etc/pam.d/common-password | head -10"`
+- `vagrant ssh -c "echo 'john:123' | sudo chpasswd"`
 
 ## Проверка PAM script логирования
 
-`vagrant ssh -c "ls -la /usr/local/bin/login_notify.sh"`
-`vagrant ssh -c "sudo grep login_notify /etc/pam.d/sshd /etc/pam.d/login"`
-`vagrant ssh -c "sudo tail -10 /var/log/pam_scripts.log"`
+- `vagrant ssh -c "ls -la /usr/local/bin/login_notify.sh"`
+- `vagrant ssh -c "sudo grep login_notify /etc/pam.d/sshd /etc/pam.d/login"`
+- `vagrant ssh -c "sudo tail -10 /var/log/pam_scripts.log"`
 
 ## Проверка sudo для john без пароля + логирование
 
-`vagrant ssh -c "sudo -l -U john"`
-`vagrant ssh -c "sudo -u john sudo whoami"`
-`vagrant ssh -c "sudo -u john sudo echo 'Тест команды для логирования'"`
-`vagrant ssh -c "sudo tail -5 /var/log/sudo.log"`
+- `vagrant ssh -c "sudo -l -U john"`
+- `vagrant ssh -c "sudo -u john sudo whoami"`
+- `vagrant ssh -c "sudo -u john sudo echo 'Тест команды для логирования'"`
+- `vagrant ssh -c "sudo tail -5 /var/log/sudo.log"`
 
 ## Проверка автоматизации
 
-`vagrant ssh -c "sudo ls -la /vagrant/scripts/"`
-`vagrant ssh -c "sudo tail -20 /var/log/security_setup.log"`
+- `vagrant ssh -c "sudo ls -la /vagrant/scripts/"`
+- `vagrant ssh -c "sudo tail -20 /var/log/security_setup.log"`
