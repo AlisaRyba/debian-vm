@@ -84,6 +84,83 @@ EOF
     log_message "Пользователь john создан с настроенным sudo"
 }
 
+setup_additional_users() {
+    log_message "Создание дополнительных пользователей user1, user2, user3"
+    
+    if ! getent group appusers >/dev/null; then
+        groupadd appusers
+        log_message "Создана группа appusers"
+    fi
+    
+    for i in 1 2 3; do
+        local username="user$i"
+        local home_dir="/home/$username"
+        
+        if ! id "$username" &>/dev/null; then
+            create_user "$username" "$home_dir" "/bin/bash" "appusers"
+            log_message "Создан пользователь $username"
+        else
+            usermod -aG appusers "$username" 2>/dev/null || true
+            log_message "Пользователь $username уже существует, добавлен в группу appusers"
+        fi
+    done
+    
+    log_message "Демонстрация различий между login и non-login shell"
+    
+    echo "export DEMO_VAR=login_shell_value" | sudo tee -a /home/user1/.profile > /dev/null
+    
+    log_message "Login Shell (загружает .profile):"
+    sudo -u user1 bash -l -c 'echo "DEMO_VAR: $DEMO_VAR"'
+    
+    log_message "Non-Login Shell (не загружает .profile):"
+    sudo -u user1 bash -c 'echo "DEMO_VAR: $DEMO_VAR"'
+}
+
+setup_additional_sudoers() {
+    log_message "Настройка sudo прав для дополнительных пользователей"
+    
+    cat << EOF > /etc/sudoers.d/10-user2-admin
+# User2 - System Administrator (высокий приоритет)
+user2 ALL=(ALL) ALL
+EOF
+    
+    cat << EOF > /etc/sudoers.d/20-user1-ls
+# User1 - can run ls as user2
+user1 ALL=(user2) /bin/ls
+EOF
+    
+    groupadd -f appusers
+    for i in 1 2 3; do
+        usermod -aG appusers "user$i" 2>/dev/null || true
+    done
+    
+    cat << EOF > /etc/sudoers.d/30-appusers-group
+%appusers ALL=(root) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get upgrade, /sbin/shutdown
+EOF
+    
+    chmod 440 /etc/sudoers.d/10-user2-admin /etc/sudoers.d/20-user1-ls /etc/sudoers.d/30-appusers-group
+    
+    log_message "Sudoers политики для дополнительных пользователей настроены"
+}
+
+verify_additional_setup() {
+    log_message "Проверка настроек дополнительных пользователей"
+    
+    echo "Проверка user2 (администратор)"
+    sudo -l -U user2 | head -5 || true
+    
+    echo "Проверка user1 (ls как user2)"
+    sudo -l -U user1 | grep -A2 -B2 user2 || true
+    
+    echo "Проверка групповых прав appusers"
+    for i in 1 2 3; do
+        echo "user$i:"
+        sudo -l -U "user$i" | grep -E "(apt-get|shutdown)" || true
+    done
+    
+    log_message "Проверка дополнительных пользователей завершена"
+}
+
 setup_sudo_permissions() {
     log_message "Настройка sudo прав"
 
@@ -139,7 +216,11 @@ check_root
 
 setup_company_users
 setup_special_users
-
 setup_department_users
+
+setup_additional_users
+setup_additional_sudoers
+
 setup_sudo_permissions
 verify_sudo_config
+verify_additional_setup
