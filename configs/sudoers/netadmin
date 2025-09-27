@@ -1,1 +1,1 @@
-netadmin ALL=(root) /usr/bin/nmtui
+netadmin ALL=(ALL) NOPASSWD: /usr/bin/nmcli, /usr/bin/nmtui, /bin/ip, /sbin/ifconfig, /sbin/route

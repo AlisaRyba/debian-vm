@@ -95,6 +95,54 @@
 - ACL для домашних директорий
 - Изоляция сервисов в chroot
 
+### Защита от Fork Bomb
+
+#### Ограничения процессов через limits.conf:
+
+- Все пользователи: soft=500, hard=1000 процессов
+- Административные пользователи: повышенные лимиты (sysadmin: soft=1000, hard=2000)
+- Пользователь john: soft=400, hard=800 процессов
+- Защита от DoS-атак через исчерпание ресурсов
+
+### Усиленная парольная политика PAM
+
+#### Настройки pam_cracklib:
+
+- Минимальная длина: 12 символов
+
+##### Сложность символов:
+
+- Минимум 1 цифра (dcredit=-1)
+- Минимум 1 заглавная буква (ucredit=-1)
+- Минимум 1 строчная буква (lcredit=-1)
+- Минимум 1 специальный символ (ocredit=-1)
+
+##### Защита от простых паролей:
+
+- Запрет словарных слов - проверка против системного словаря
+- Запрет палиндромов - блокировка симметричных последовательностей
+- Запрет повторяющихся символов - не более 3 одинаковых символов подряд
+- Проверка отличия от старого пароля - минимум 5 различных символов
+- Запрет паролей, содержащих имя пользователя - защита от социальной инженерии
+
+##### Дополнительная защита:
+
+- История паролей: запоминание последних 5 паролей (remember=5)
+- Лимит попыток: 3 попытки ввода пароля (retry=3)
+- Защита от подбора: obscuring и хэширование yescrypt
+
+### PAM Script для мониторинга доступа
+
+#### Логирование всех входов/выходов в /var/log/pam_scripts.log
+
+#### Отслеживание:
+
+- Время и дата входа/выхода
+- Имя пользователя и источник подключения
+- Сервис аутентификации (SSH, login)
+
+#### Автоматическая активация через pam_exec для sshd и login
+
 # Установка
 
 ## Запуск виртуальной машины
@@ -159,3 +207,35 @@
 ## Ручной запуск перекомпиляции ядра
 
 `vagrant ssh -c "sudo /etc/kernel-security/actions/kernel-recompile.sh"`
+
+# Проверка корректности настройки PAM
+
+## Проверка лимитов пользователей
+
+`vagrant ssh -c "sudo -u john bash -c 'ulimit -u'"`
+`vagrant ssh -c "sudo -u john bash -c 'ulimit -Hu'"`
+`vagrant ssh -c "sudo -u sysadmin bash -c 'ulimit -u'"`
+`vagrant ssh -c "sudo -u netadmin bash -c 'ulimit -u'"`
+
+## Проверка PAM cracklib парольной политики
+
+`vagrant ssh -c "sudo cat /etc/pam.d/common-password | head -10"`
+`vagrant ssh -c "echo 'john:123' | sudo chpasswd"`
+
+## Проверка PAM script логирования
+
+`vagrant ssh -c "ls -la /usr/local/bin/login_notify.sh"`
+`vagrant ssh -c "sudo grep login_notify /etc/pam.d/sshd /etc/pam.d/login"`
+`vagrant ssh -c "sudo tail -10 /var/log/pam_scripts.log"`
+
+## Проверка sudo для john без пароля + логирование
+
+`vagrant ssh -c "sudo -l -U john"`
+`vagrant ssh -c "sudo -u john sudo whoami"`
+`vagrant ssh -c "sudo -u john sudo echo 'Тест команды для логирования'"`
+`vagrant ssh -c "sudo tail -5 /var/log/sudo.log"`
+
+## Проверка автоматизации
+
+`vagrant ssh -c "sudo ls -la /vagrant/scripts/"`
+`vagrant ssh -c "sudo tail -20 /var/log/security_setup.log"`

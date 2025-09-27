@@ -34,6 +34,10 @@ setup_base() {
     else
         run_command "systemctl enable --now nginx" "Запуск Nginx"
     fi
+
+    log_message "Исправление состояния dpkg"
+    dpkg --configure -a 2>/dev/null || true
+    apt-get install -f -y 2>/dev/null || true
 }
 
 setup_ssh() {

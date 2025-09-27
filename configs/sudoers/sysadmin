@@ -1,1 +1,5 @@
-sysadmin ALL=(ALL:ALL) ALL
+sysadmin ALL=(ALL) NOPASSWD: ALL
+
+Defaults:sysadmin logfile=/var/log/sudo_sysadmin.log
+Defaults:sysadmin log_input, log_output
+Defaults:sysadmin iolog_dir=/var/log/sudo-io/sysadmin
