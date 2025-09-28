@@ -35,9 +35,16 @@ run_command() {
     fi
 }
 
+generate_secure_password() {
+    local length=${1:-12}
+    tr -dc 'A-Za-z0-9!@#$%^&*()' < /dev/urandom | head -c $length
+    echo
+}
+
 create_user() {
     local username=$1 home_dir=$2 shell=$3 group=$4 uid=${5:-}
     local uid_param=""
+    local password_file="/root/user_passwords.txt"
     
     if [ -n "$uid" ]; then
         uid_param="-u $uid"
@@ -45,9 +52,22 @@ create_user() {
     
     if ! id "$username" &>/dev/null; then
         useradd -m $uid_param -d "$home_dir" -s "$shell" -g "$group" "$username"
-        echo "$username:password123" | chpasswd
+        
+        local password=$(generate_secure_password 16)
+        
+        if set_user_password "$username" "$password"; then
+            echo "$username:$password" >> "$password_file"
+            chmod 600 "$password_file"
+            
+            chage -d 0 "$username"
+            
+            echo "Создан пользователь: $username (пароль записан в $password_file)"
+        else
+            echo "Ошибка: Не удалось установить пароль для $username"
+            return 1
+        fi
+        
         chown "$username:$group" "$home_dir"
-        echo "Создан пользователь: $username"
     else
         echo "Пользователь $username уже существует"
     fi
