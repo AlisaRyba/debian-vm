@@ -413,6 +413,38 @@ setup_data_structure() {
     done
 }
 
+setup_company_root_directory() {
+    log_message "Настройка корневой директории company"
+    
+    mkdir -p /company
+    log_message "Директория /company создана/проверена"
+    
+    log_message "Настройка владельца и прав доступа для /company"
+    
+    chown root:company /company
+    log_message "Установлен владелец: root:company"
+    
+    chmod 770 /company
+    log_message "Установлены права: 770 (владелец и группа - все права, остальные - нет)"
+    
+    log_message "Установка sticky bit для защиты от удаления чужих файлов"
+    chmod +t /company
+    log_message "Sticky bit установлен"
+    
+    log_message "Установка SGID бита для наследования группы company"
+    chmod g+s /company
+    log_message "SGID бит установлен"
+    
+    final_perms=$(ls -ld /company | awk '{print $1}')
+    log_message "Финальные права директории /company: $final_perms"
+    
+    if [[ "$final_perms" == *"s"* ]] && [[ "$final_perms" == *"t"* ]]; then
+        log_success "SGID и sticky bit успешно установлены"
+    else
+        log_error "Проблема с установкой специальных битов"
+    fi
+}
+
 #test_data_structure() {
 #    echo "1. Проверка директорий:"
 #    local test_dirs=(
@@ -925,6 +957,7 @@ setup_company_home_structure
 #test_company_home_structure
 
 setup_data_structure
+setup_company_root_directory
 #test_data_structure
 
 setup_academy_structure
