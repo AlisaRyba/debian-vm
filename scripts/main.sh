@@ -35,3 +35,6 @@ bash setup_bash.sh
 
 log_message "Запуск setup_journaling_system.sh" 
 bash setup_journaling_system.sh
+
+log_message "Запуск setup_firewall_system.sh" 
+bash setup_firewall_system.sh
