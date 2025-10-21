@@ -138,6 +138,178 @@ setup_additional_users() {
     demonstrate_shell_difference
 }
 
+setup_company_home_structure() {
+    log_message "Настройка домашней структуры company"
+    
+    mkdir -p /home/company
+    log_message "Директория /home/company создана/проверена"
+    
+    log_message "Создание поддиректорий в /home/company"
+    local company_dirs=(
+        "/home/company/homedirs"
+        "/home/company/sales" 
+        "/home/company/marketing"
+        "/home/company/shared"
+    )
+    
+    for dir in "${company_dirs[@]}"; do
+        mkdir -p "$dir"
+        log_message "Создана директория: $dir"
+    done
+    
+    log_message "Создание/проверка групп company, sales, marketing"
+    local company_groups=("company" "sales" "marketing")
+    for group in "${company_groups[@]}"; do
+        if ! getent group "$group" >/dev/null; then
+            create_group "$group"
+        else
+            log_message "Группа $group уже существует"
+        fi
+    done
+    
+    log_message "Создание пользователей mike и john"
+    
+    if ! id "mike" &>/dev/null; then
+        create_user "mike" "/home/company/homedirs/mike" "/bin/bash" "sales"
+        usermod -aG company mike
+        log_message "Создан пользователь mike: основная группа sales, дополнительная company"
+    else
+        usermod -g sales -G company -d "/home/company/homedirs/mike" -s /bin/bash -m mike 2>/dev/null || true
+        log_message "Пользователь mike уже существует, обновлена конфигурация"
+    fi
+    
+    if ! id "john" &>/dev/null; then
+        create_user "john" "/home/company/homedirs/john" "/bin/bash" "marketing"
+        usermod -aG company john
+        log_message "Создан пользователь john: основная группа marketing, дополнительная company"
+    else
+        usermod -g marketing -G company -d "/home/company/homedirs/john" -s /bin/bash -m john 2>/dev/null || true
+        log_message "Пользователь john уже существует, обновлена конфигурация"
+    fi
+    
+    log_message "Настройка прав доступа к директориям"
+    
+    chown root:sales /home/company/sales
+    chmod 770 /home/company/sales
+    log_message "Директория /home/company/sales: владелец root:sales, права 770"
+    
+    chown root:marketing /home/company/marketing
+    chmod 770 /home/company/marketing
+    log_message "Директория /home/company/marketing: владелец root:marketing, права 770"
+
+    log_message "Проверка прав пользователей на домашние директории"
+    
+    for user in mike john; do
+        home_dir="/home/company/homedirs/$user"
+        if [ -d "$home_dir" ]; then
+            perms=$(ls -ld "$home_dir" | awk '{print $1 " " $3 ":" $4}')
+            echo "   $user: $home_dir - $perms"
+        fi
+    done
+    
+    log_message "Настройка расшаренной директории shared"
+    
+    chown root:company /home/company/shared
+    chmod 2775 /home/company/shared
+    log_message "Директория /home/company/shared: владелец root:company, права 2775 (SGID)"
+    
+    if ls -ld /home/company/shared | grep -q "s"; then
+        log_message "SGID бит установлен - новые файлы будут наследовать группу company"
+    else
+        log_error "SGID бит не установлен!"
+    fi
+}
+
+test_company_home_structure() {
+    echo "1. Проверка директорий:"
+    local test_dirs=(
+        "/home/company"
+        "/home/company/homedirs" 
+        "/home/company/sales"
+        "/home/company/marketing"
+        "/home/company/shared"
+    )
+    
+    for dir in "${test_dirs[@]}"; do
+        if [ -d "$dir" ]; then
+            perms=$(ls -ld "$dir" | awk '{print $1 " " $3 ":" $4}')
+            echo "   ✓ $dir: $perms"
+        else
+            echo "   ✗ $dir: не существует"
+        fi
+    done
+    
+    echo "2. Проверка пользователей и групп:"
+    for user in mike john; do
+        if id "$user" &>/dev/null; then
+            echo "   ✓ $user: $(id "$user")"
+            echo "     Домашняя директория: $(eval echo ~$user)"
+        else
+            echo "   ✗ $user: не существует"
+        fi
+    done
+    
+    echo "3. Проверка прав доступа:"
+    echo "   - /home/company/sales:"
+    ls -ld /home/company/sales | awk '{print "     " $1 " " $3 ":" $4}'
+    echo "   - /home/company/marketing:"
+    ls -ld /home/company/marketing | awk '{print "     " $1 " " $3 ":" $4}'
+    echo "   - /home/company/shared:"
+    ls -ld /home/company/shared | awk '{print "     " $1 " " $3 ":" $4}'
+    
+    echo "4. Проверка SGID в shared директории:"
+    shared_perms=$(ls -ld /home/company/shared | awk '{print $1}')
+    if [[ "$shared_perms" == *"s"* ]]; then
+        echo "   ✓ SGID бит установлен: $shared_perms"
+
+        echo "5. Тестирование наследования группы в shared:"
+        echo "   - Создаем файл от mike:"
+        sudo -u mike touch /home/company/shared/mike_file.txt
+        echo "Файл от mike" | sudo -u mike tee /home/company/shared/mike_file.txt > /dev/null
+        
+        echo "   - Создаем файл от john:"
+        sudo -u john touch /home/company/shared/john_file.txt  
+        echo "Файл от john" | sudo -u john tee /home/company/shared/john_file.txt > /dev/null
+        
+        echo "   - Проверка владельцев и групп файлов:"
+        for file in /home/company/shared/*.txt; do
+            if [ -f "$file" ]; then
+                file_info=$(ls -l "$file" | awk '{print $3 ":" $4 " " $9}')
+                echo "     $file_info"
+            fi
+        done
+        
+        rm -f /home/company/shared/mike_file.txt /home/company/shared/john_file.txt
+    else
+        echo "   ✗ SGID бит не установлен: $shared_perms"
+    fi
+    
+    echo "6. Проверка доступа пользователей:"
+    echo "   - Mike доступ к /home/company/sales:"
+    if sudo -u mike ls /home/company/sales/ >/dev/null 2>&1; then
+        echo "     ✓ Mike имеет доступ к sales"
+    else
+        echo "     ✗ Mike нет доступа к sales"
+    fi
+    
+    echo "   - John доступ к /home/company/marketing:"
+    if sudo -u john ls /home/company/marketing/ >/dev/null 2>&1; then
+        echo "     ✓ John имеет доступ к marketing" 
+    else
+        echo "     ✗ John нет доступа к marketing"
+    fi
+    
+    echo "   - Оба пользователя доступ к shared:"
+    if sudo -u mike ls /home/company/shared/ >/dev/null 2>&1 && \
+       sudo -u john ls /home/company/shared/ >/dev/null 2>&1; then
+        echo "     ✓ Оба пользователя имеют доступ к shared"
+    else
+        echo "     ✗ Проблемы с доступом к shared"
+    fi
+    
+    log_message "Тестирование структуры company завершено"
+}
+
 setup_academy_structure() {
     log_message "Создание структуры академии"
     
@@ -537,6 +709,9 @@ setup_company_structure_users
 setup_department_users
 setup_special_users
 setup_additional_users
+
+setup_company_home_structure
+test_company_home_structure
 
 setup_academy_structure
 
