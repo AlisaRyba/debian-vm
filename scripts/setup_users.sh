@@ -138,6 +138,183 @@ setup_additional_users() {
     demonstrate_shell_difference
 }
 
+setup_academy_structure() {
+    log_message "Создание структуры академии"
+    
+    log_message "Создание групп academy, teachers, students, staff"
+    local academy_groups=("academy" "teachers" "students" "staff")
+    for group in "${academy_groups[@]}"; do
+        create_group "$group"
+    done
+    
+    log_message "Создание директорий академии"
+    local academy_dirs=(
+        "/academy"
+        "/academy/teachers"
+        "/academy/students" 
+        "/academy/staff"
+        "/academy/secret"
+    )
+    
+    for dir in "${academy_dirs[@]}"; do
+        mkdir -p "$dir"
+    done
+    
+    log_message "Создание пользователей академии"
+
+    create_user "student" "/academy/students/student" "/bin/bash" "students"
+    usermod -aG academy "student"
+    
+    create_user "teacher" "/academy/teachers/teacher" "/bin/bash" "teachers"
+    usermod -aG academy,staff "teacher"
+    
+    log_message "Настройка прав доступа к директориям"
+    
+    chown root:teachers /academy/teachers
+    chmod 770 /academy/teachers
+    log_message "Директория /academy/teachers: владелец root:teachers, права 770"
+    
+    chown root:students /academy/students
+    chmod 770 /academy/students
+    log_message "Директория /academy/students: владелец root:students, права 770"
+    
+    chown root:staff /academy/staff
+    chmod 770 /academy/staff
+    log_message "Директория /academy/staff: владелец root:staff, права 770"
+    
+    for dir in /academy/teachers /academy/students /academy/staff; do
+        setfacl -m g:staff:rwx "$dir" 2>/dev/null || true
+    done
+    log_message "Группа staff получила доступ ко всем директориям академии"
+    
+    setup_secret_directory
+    setup_students_sudo
+    test_academy_setup
+}
+
+setup_secret_directory() {
+    log_message "Настройка секретной директории /academy/secret"
+    
+    chown root:teachers /academy/secret
+    chmod 3770 /academy/secret 
+    log_message "Директория /academy/secret: владелец root:teachers, права 3770"
+    
+    setfacl -m g:staff:rwx /academy/secret 2>/dev/null || \
+    (log_message "ACL не поддерживается, добавляем staff в teachers" && usermod -aG teachers staff)
+    
+    sudo -u teacher touch /academy/secret/teacher_test_file.txt
+    echo "Это тестовый файл от учителя, создан: $(date)" | sudo -u teacher tee /academy/secret/teacher_test_file.txt > /dev/null
+    log_message "Создан тестовый файл /academy/secret/teacher_test_file.txt от учителя"
+    
+    log_message "Создание файла top_secret с защитой от удаления"
+    echo "Это сверхсекретная информация академии! Даже root не может удалить этот файл." | sudo tee /academy/secret/top_secret > /dev/null
+    sudo chmod 400 /academy/secret/top_secret  
+    sudo chattr +i /academy/secret/top_secret 
+    log_message "Файл top_secret создан с immutable атрибутом"
+    
+    create_spy_program
+}
+
+create_spy_program() {
+    log_message "Создание программы spy для студентов"
+    
+    cat << 'EOF' > /usr/local/bin/spy
+#!/bin/bash
+echo "=== SPY PROGRAM - Academy Secret Directory ==="
+echo ""
+
+echo "1. Содержимое директории /academy/secret:"
+sudo -u teacher ls -la /academy/secret/ 2>/dev/null || echo "Доступ запрещен"
+
+echo ""
+echo "2. Попытка чтения файлов:"
+for file in /academy/secret/*; do
+    if sudo -u teacher test -f "$file" 2>/dev/null; then
+        filename=$(basename "$file")
+        echo "--- Файл: $filename ---"
+        sudo -u teacher cat "$file" 2>/dev/null || echo "[Содержимое недоступно]"
+        echo ""
+    fi
+done
+
+echo "=== КОНЕЦ ОТЧЕТА ==="
+EOF
+    
+    chmod 755 /usr/local/bin/spy
+    chown root:root /usr/local/bin/spy
+    log_message "Программа spy создана в /usr/local/bin/spy"
+}
+
+setup_students_sudo() {
+    log_message "Настройка sudo прав для студентов"
+    
+    cat << EOF > /etc/sudoers.d/students-secret
+# Разрешить студентам просматривать секретную директорию от имени teacher
+%students ALL=(teacher) NOPASSWD: /bin/ls /academy/secret/, /bin/ls /academy/secret/*, /bin/cat /academy/secret/*, /usr/bin/test
+
+# Разрешить студентам удалять файлы в секретной директории от имени teacher  
+%students ALL=(teacher) NOPASSWD: /bin/rm /academy/secret/*
+EOF
+    
+    chmod 440 /etc/sudoers.d/students-secret
+    log_message "Sudo права для студентов настроены"
+}
+
+test_academy_setup() {
+    echo "1. Проверка пользователей и групп:"
+    for user in student teacher; do
+        if id "$user" &>/dev/null; then
+            echo "   ✓ $user: $(id "$user")"
+        else
+            echo "   ✗ $user: не найден"
+        fi
+    done
+
+    echo "2. Проверка прав директорий:"
+    for dir in /academy/teachers /academy/students /academy/staff /academy/secret; do
+        if [ -d "$dir" ]; then
+            perms=$(ls -ld "$dir" | awk '{print $1 " " $3 ":" $4}')
+            echo "   ✓ $dir: $perms"
+        fi
+    done
+
+    echo "3. Проверка программы spy (студент просматривает секретную директорию):"
+    sudo -u student /usr/local/bin/spy
+    
+    echo "4. Проверка sudo прав студентов:"
+    sudo -l -U student | grep -A5 -B5 "teacher" || echo "   Нет прав для teacher"
+    
+    echo "5. Проверка защиты файла top_secret:"
+    if lsattr /academy/secret/top_secret 2>/dev/null | grep -q "i"; then
+        echo "   ✓ Файл top_secret защищен атрибутом immutable"
+    else
+        echo "   ✗ Файл top_secret не защищен"
+    fi
+
+    echo "6. ДЕМОНСТРАЦИЯ: Студент находит и удаляет файл учителя"
+    echo "   - Файлы до удаления:"
+    sudo -u teacher ls -la /academy/secret/
+    
+    echo "   - Удаление файла teacher_test_file.txt студентом:"
+    if sudo -u student sudo -u teacher rm /academy/secret/teacher_test_file.txt 2>/dev/null; then
+        echo "   ✓ Файл teacher_test_file.txt успешно удален студентом"
+    else
+        echo "   ✗ Ошибка при удалении файла"
+    fi
+    
+    echo "   - Файлы после удаления:"
+    sudo -u teacher ls -la /academy/secret/
+    
+    echo "7. Попытка удалить top_secret (должно быть невозможно):"
+    if sudo rm /academy/secret/top_secret 2>/dev/null; then
+        echo "   ✗ ОШИБКА БЕЗОПАСНОСТИ: top_secret был удален!"
+    else
+        echo "   ✓ top_secret защищен от удаления (как и задумано)"
+    fi
+    
+    log_message "Тестирование академии завершено"
+}
+
 demonstrate_shell_difference() {
     log_message "Демонстрация различий между login и non-login shell"
     
@@ -283,6 +460,8 @@ setup_company_structure_users
 setup_department_users
 setup_special_users
 setup_additional_users
+
+setup_academy_structure
 
 setup_directory_permissions
 create_shared_files

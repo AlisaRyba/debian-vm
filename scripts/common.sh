@@ -41,6 +41,17 @@ generate_secure_password() {
     echo
 }
 
+set_user_password() {
+    local username=$1
+    local password=$2
+    
+    if echo "$username:$password" | chpasswd 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
 create_user() {
     local username=$1 home_dir=$2 shell=$3 group=$4 uid=${5:-}
     local uid_param=""
@@ -51,7 +62,10 @@ create_user() {
     fi
     
     if ! id "$username" &>/dev/null; then
-        useradd -m $uid_param -d "$home_dir" -s "$shell" -g "$group" "$username"
+        if ! useradd -m $uid_param -d "$home_dir" -s "$shell" -g "$group" "$username"; then
+            echo "Ошибка: Не удалось создать пользователя $username"
+            return 1
+        fi
         
         local password=$(generate_secure_password 16)
         
@@ -64,7 +78,6 @@ create_user() {
             echo "Создан пользователь: $username (пароль записан в $password_file)"
         else
             echo "Ошибка: Не удалось установить пароль для $username"
-            return 1
         fi
         
         chown "$username:$group" "$home_dir"
