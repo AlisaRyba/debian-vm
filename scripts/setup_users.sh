@@ -220,95 +220,305 @@ setup_company_home_structure() {
     fi
 }
 
-test_company_home_structure() {
-    echo "1. Проверка директорий:"
-    local test_dirs=(
-        "/home/company"
-        "/home/company/homedirs" 
-        "/home/company/sales"
-        "/home/company/marketing"
-        "/home/company/shared"
+#test_company_home_structure() {
+#    echo "1. Проверка директорий:"
+#    local test_dirs=(
+#        "/home/company"
+#        "/home/company/homedirs" 
+#        "/home/company/sales"
+#        "/home/company/marketing"
+#        "/home/company/shared"
+#    )
+#    
+#    for dir in "${test_dirs[@]}"; do
+#        if [ -d "$dir" ]; then
+#            perms=$(ls -ld "$dir" | awk '{print $1 " " $3 ":" $4}')
+#            echo "   ✓ $dir: $perms"
+#        else
+#            echo "   ✗ $dir: не существует"
+#        fi
+#    done
+#    
+#    echo "2. Проверка пользователей и групп:"
+#    for user in mike john; do
+#        if id "$user" &>/dev/null; then
+#            echo "   ✓ $user: $(id "$user")"
+#            echo "     Домашняя директория: $(eval echo ~$user)"
+#        else
+#            echo "   ✗ $user: не существует"
+#        fi
+#    done
+#    
+#    echo "3. Проверка прав доступа:"
+#    echo "   - /home/company/sales:"
+#    ls -ld /home/company/sales | awk '{print "     " $1 " " $3 ":" $4}'
+#    echo "   - /home/company/marketing:"
+#    ls -ld /home/company/marketing | awk '{print "     " $1 " " $3 ":" $4}'
+#    echo "   - /home/company/shared:"
+#    ls -ld /home/company/shared | awk '{print "     " $1 " " $3 ":" $4}'
+#    
+#    echo "4. Проверка SGID в shared директории:"
+#    shared_perms=$(ls -ld /home/company/shared | awk '{print $1}')
+#    if [[ "$shared_perms" == *"s"* ]]; then
+#        echo "   ✓ SGID бит установлен: $shared_perms"
+#
+#        echo "5. Тестирование наследования группы в shared:"
+#        echo "   - Создаем файл от mike:"
+#        sudo -u mike touch /home/company/shared/mike_file.txt
+#        echo "Файл от mike" | sudo -u mike tee /home/company/shared/mike_file.txt > /dev/null
+#        
+#        echo "   - Создаем файл от john:"
+#        sudo -u john touch /home/company/shared/john_file.txt  
+#        echo "Файл от john" | sudo -u john tee /home/company/shared/john_file.txt > /dev/null
+#        
+#        echo "   - Проверка владельцев и групп файлов:"
+#        for file in /home/company/shared/*.txt; do
+#            if [ -f "$file" ]; then
+#                file_info=$(ls -l "$file" | awk '{print $3 ":" $4 " " $9}')
+#                echo "     $file_info"
+#            fi
+#        done
+#        
+#        rm -f /home/company/shared/mike_file.txt /home/company/shared/john_file.txt
+#    else
+#        echo "   ✗ SGID бит не установлен: $shared_perms"
+#    fi
+#    
+#    echo "6. Проверка доступа пользователей:"
+#    echo "   - Mike доступ к /home/company/sales:"
+#    if sudo -u mike ls /home/company/sales/ >/dev/null 2>&1; then
+#        echo "     ✓ Mike имеет доступ к sales"
+#    else
+#        echo "     ✗ Mike нет доступа к sales"
+#    fi
+#    
+#    echo "   - John доступ к /home/company/marketing:"
+#    if sudo -u john ls /home/company/marketing/ >/dev/null 2>&1; then
+#        echo "     ✓ John имеет доступ к marketing" 
+#    else
+#        echo "     ✗ John нет доступа к marketing"
+#    fi
+#    
+#    echo "   - Оба пользователя доступ к shared:"
+#    if sudo -u mike ls /home/company/shared/ >/dev/null 2>&1 && \
+#       sudo -u john ls /home/company/shared/ >/dev/null 2>&1; then
+#        echo "     ✓ Оба пользователя имеют доступ к shared"
+#    else
+#        echo "     ✗ Проблемы с доступом к shared"
+#    fi
+#    
+#    log_message "Тестирование структуры company завершено"
+#}
+
+setup_data_structure() {
+    log_message "Настройка структуры данных в /data"
+    
+    log_message "Создание директорий в /data"
+    mkdir -p /data
+    local data_dirs=(
+        "/data/marketing"
+        "/data/sales" 
+        "/data/it"
     )
     
-    for dir in "${test_dirs[@]}"; do
-        if [ -d "$dir" ]; then
-            perms=$(ls -ld "$dir" | awk '{print $1 " " $3 ":" $4}')
-            echo "   ✓ $dir: $perms"
+    for dir in "${data_dirs[@]}"; do
+        mkdir -p "$dir"
+        log_message "Создана директория: $dir"
+    done
+    
+    log_message "Создание групп marketing, sales, it"
+    local data_groups=("marketing" "sales" "it")
+    for group in "${data_groups[@]}"; do
+        if ! getent group "$group" >/dev/null; then
+            create_group "$group"
         else
-            echo "   ✗ $dir: не существует"
+            log_message "Группа $group уже существует"
         fi
     done
     
-    echo "2. Проверка пользователей и групп:"
-    for user in mike john; do
-        if id "$user" &>/dev/null; then
-            echo "   ✓ $user: $(id "$user")"
-            echo "     Домашняя директория: $(eval echo ~$user)"
+    log_message "Создание пользователей для структуры /data"
+    
+    if ! id "user.marketing" &>/dev/null; then
+        if create_user "user.marketing" "/home/user.marketing" "/bin/bash" "marketing"; then
+            log_success "Создан пользователь user.marketing: группа marketing"
         else
-            echo "   ✗ $user: не существует"
+            log_error "Не удалось создать пользователя user.marketing"
         fi
+    else
+        log_message "Пользователь user.marketing уже существует"
+    fi
+    
+    if ! id "user.sales" &>/dev/null; then
+        if create_user "user.sales" "/home/user.sales" "/bin/bash" "sales"; then
+            log_success "Создан пользователь user.sales: группа sales"
+        else
+            log_error "Не удалось создать пользователя user.sales"
+        fi
+    else
+        log_message "Пользователь user.sales уже существует"
+    fi
+    
+    if ! id "admin" &>/dev/null; then
+        if create_user "admin" "/home/admin" "/bin/bash" "it"; then
+            log_success "Создан пользователь admin: группа it"
+        else
+            log_error "Не удалось создать пользователя admin"
+        fi
+    else
+        log_message "Пользователь admin уже существует"
+    fi
+    
+    if ! id "backup" &>/dev/null; then
+        if create_user "backup" "/home/backup" "/bin/bash" "it"; then
+            log_success "Создан пользователь backup: группа it"
+        else
+            log_error "Не удалось создать пользователя backup"
+        fi
+    else
+        log_message "Пользователь backup уже существует"
+    fi
+    
+    log_message "Настройка прав доступа к директориям /data"
+    
+    chown user.marketing:marketing /data/marketing
+    chmod 770 /data/marketing
+    log_message "Директория /data/marketing: владелец user.marketing:marketing, права 770"
+    
+    chown user.sales:sales /data/sales
+    chmod 770 /data/sales
+    log_message "Директория /data/sales: владелец user.sales:sales, права 770"
+    
+    chown admin:it /data/it
+    chmod 770 /data/it
+    log_message "Директория /data/it: владелец admin:it, права 770"
+    
+    log_message "Настройка специальных прав доступа через ACL"
+    
+    for dir in /data/marketing /data/sales /data/it; do
+        setfacl -m u:admin:rwx "$dir" 2>/dev/null && \
+        log_message "Пользователь admin получил полный доступ к $dir" || \
+        log_warning "Не удалось установить ACL для admin на $dir"
     done
     
-    echo "3. Проверка прав доступа:"
-    echo "   - /home/company/sales:"
-    ls -ld /home/company/sales | awk '{print "     " $1 " " $3 ":" $4}'
-    echo "   - /home/company/marketing:"
-    ls -ld /home/company/marketing | awk '{print "     " $1 " " $3 ":" $4}'
-    echo "   - /home/company/shared:"
-    ls -ld /home/company/shared | awk '{print "     " $1 " " $3 ":" $4}'
+    for dir in /data/marketing /data/sales /data/it; do
+        setfacl -m u:backup:r-x "$dir" 2>/dev/null && \
+        log_message "Пользователь backup получил доступ на чтение к $dir" || \
+        log_warning "Не удалось установить ACL для backup на $dir"
+    done
     
-    echo "4. Проверка SGID в shared директории:"
-    shared_perms=$(ls -ld /home/company/shared | awk '{print $1}')
-    if [[ "$shared_perms" == *"s"* ]]; then
-        echo "   ✓ SGID бит установлен: $shared_perms"
-
-        echo "5. Тестирование наследования группы в shared:"
-        echo "   - Создаем файл от mike:"
-        sudo -u mike touch /home/company/shared/mike_file.txt
-        echo "Файл от mike" | sudo -u mike tee /home/company/shared/mike_file.txt > /dev/null
-        
-        echo "   - Создаем файл от john:"
-        sudo -u john touch /home/company/shared/john_file.txt  
-        echo "Файл от john" | sudo -u john tee /home/company/shared/john_file.txt > /dev/null
-        
-        echo "   - Проверка владельцев и групп файлов:"
-        for file in /home/company/shared/*.txt; do
-            if [ -f "$file" ]; then
-                file_info=$(ls -l "$file" | awk '{print $3 ":" $4 " " $9}')
-                echo "     $file_info"
-            fi
-        done
-        
-        rm -f /home/company/shared/mike_file.txt /home/company/shared/john_file.txt
-    else
-        echo "   ✗ SGID бит не установлен: $shared_perms"
-    fi
-    
-    echo "6. Проверка доступа пользователей:"
-    echo "   - Mike доступ к /home/company/sales:"
-    if sudo -u mike ls /home/company/sales/ >/dev/null 2>&1; then
-        echo "     ✓ Mike имеет доступ к sales"
-    else
-        echo "     ✗ Mike нет доступа к sales"
-    fi
-    
-    echo "   - John доступ к /home/company/marketing:"
-    if sudo -u john ls /home/company/marketing/ >/dev/null 2>&1; then
-        echo "     ✓ John имеет доступ к marketing" 
-    else
-        echo "     ✗ John нет доступа к marketing"
-    fi
-    
-    echo "   - Оба пользователя доступ к shared:"
-    if sudo -u mike ls /home/company/shared/ >/dev/null 2>&1 && \
-       sudo -u john ls /home/company/shared/ >/dev/null 2>&1; then
-        echo "     ✓ Оба пользователя имеют доступ к shared"
-    else
-        echo "     ✗ Проблемы с доступом к shared"
-    fi
-    
-    log_message "Тестирование структуры company завершено"
+    for dir in /data/marketing /data/sales /data/it; do
+        setfacl -m o::--- "$dir" 2>/dev/null && \
+        log_message "Доступ других пользователей заблокирован для $dir" || \
+        log_warning "Не удалось заблокировать доступ других пользователей для $dir"
+    done
 }
+
+#test_data_structure() {
+#    echo "1. Проверка директорий:"
+#    local test_dirs=(
+#        "/data"
+#        "/data/marketing"
+#        "/data/sales" 
+#        "/data/it"
+#    )
+#    
+#    for dir in "${test_dirs[@]}"; do
+#        if [ -d "$dir" ]; then
+#            perms=$(ls -ld "$dir" | awk '{print $1 " " $3 ":" $4}')
+#            echo "   ✓ $dir: $perms"
+#            
+#            if getfacl "$dir" 2>/dev/null | grep -q "acl"; then
+#                echo "     ACL настроены"
+#            fi
+#        else
+#            echo "   ✗ $dir: не существует"
+#        fi
+#    done
+#    
+#    echo "2. Проверка пользователей и групп:"
+#    for user in user.marketing user.sales admin backup; do
+#        if id "$user" &>/dev/null; then
+#            echo "   ✓ $user: $(id "$user")"
+#        else
+#            echo "   ✗ $user: не существует"
+#        fi
+#    done
+#    
+#    echo "3. Проверка прав доступа:"
+#    echo "   - /data/marketing:"
+#    ls -ld /data/marketing | awk '{print "     " $1 " " $3 ":" $4}'
+#    echo "   - /data/sales:"
+#    ls -ld /data/sales | awk '{print "     " $1 " " $3 ":" $4}'
+#    echo "   - /data/it:"
+#    ls -ld /data/it | awk '{print "     " $1 " " $3 ":" $4}'
+#    
+#    echo "4. Проверка специальных прав доступа:"
+#    echo "   - Проверка доступа admin (должен иметь полный доступ):"
+#    for dir in /data/marketing /data/sales /data/it; do
+#        dir_name=$(basename "$dir")
+#        if sudo -u admin ls "$dir" >/dev/null 2>&1 && \
+#           sudo -u admin touch "$dir/test_admin_$dir_name" 2>/dev/null; then
+#            echo "     ✓ Admin имеет полный доступ к $dir"
+#            sudo -u admin rm -f "$dir/test_admin_$dir_name" 2>/dev/null
+#        else
+#            echo "     ✗ Admin нет полного доступа к $dir"
+#        fi
+#    done
+#    
+#    echo "   - Проверка доступа backup (должен иметь доступ только на чтение):"
+#    for dir in /data/marketing /data/sales /data/it; do
+#        dir_name=$(basename "$dir")
+#        if sudo -u backup ls "$dir" >/dev/null 2>&1; then
+#            if sudo -u backup touch "$dir/test_backup_$dir_name" 2>/dev/null; then
+#                echo "     ✗ Backup имеет запись в $dir (не должно быть)"
+#                sudo -u backup rm -f "$dir/test_backup_$dir_name" 2>/dev/null
+#            else
+#                echo "     ✓ Backup имеет только чтение в $dir"
+#            fi
+#        else
+#            echo "     ✗ Backup нет доступа к $dir"
+#        fi
+#    done
+#    
+#    echo "   - Проверка доступа других пользователей (должны быть заблокированы):"
+#    if sudo -u user1 ls /data/marketing/ >/dev/null 2>&1; then
+#        echo "     ✗ user1 имеет доступ к marketing (не должно быть)"
+#    else
+#        echo "     ✓ user1 заблокирован в marketing"
+#    fi
+#    
+#    if sudo -u user2 ls /data/sales/ >/dev/null 2>&1; then
+#        echo "     ✗ user2 имеет доступ к sales (не должно быть)"
+#    else
+#        echo "     ✓ user2 заблокирован в sales"
+#    fi
+#    
+#    echo "5. Проверка владельцев директорий:"
+#    echo "   - /data/marketing должен принадлежать user.marketing:"
+#    actual_owner=$(ls -ld /data/marketing | awk '{print $3}')
+#    if [ "$actual_owner" = "user.marketing" ]; then
+#        echo "     ✓ Владелец правильный: $actual_owner"
+#    else
+#        echo "     ✗ Владелец неправильный: $actual_owner (должен быть user.marketing)"
+#    fi
+#    
+#    echo "   - /data/sales должен принадлежать user.sales:"
+#    actual_owner=$(ls -ld /data/sales | awk '{print $3}')
+#    if [ "$actual_owner" = "user.sales" ]; then
+#        echo "     ✓ Владелец правильный: $actual_owner"
+#    else
+#        echo "     ✗ Владелец неправильный: $actual_owner (должен быть user.sales)"
+#    fi
+#    
+#    echo "   - /data/it должен принадлежать admin:"
+#    actual_owner=$(ls -ld /data/it | awk '{print $3}')
+#    if [ "$actual_owner" = "admin" ]; then
+#        echo "     ✓ Владелец правильный: $actual_owner"
+#    else
+#        echo "     ✗ Владелец неправильный: $actual_owner (должен быть admin)"
+#    fi
+#    
+#}
 
 setup_academy_structure() {
     log_message "Создание структуры академии"
@@ -368,7 +578,7 @@ setup_academy_structure() {
     setup_secret_directory
     create_spy_program
     setup_students_sudo
-    test_academy_setup
+    #test_academy_setup
 }
 
 setup_secret_directory() {
@@ -481,88 +691,89 @@ EOF
     fi
 }
 
-test_academy_setup() {
-    echo "1. Проверка пользователей и групп:"
-    for user in student teacher staffuser; do
-        if id "$user" &>/dev/null; then
-            echo "   ✓ $user: $(id "$user")"
-        else
-            echo "   ✗ $user: не найден"
-        fi
-    done
-    
-    echo "2. Проверка прав директорий:"
-    for dir in /academy/teachers /academy/students /academy/staff /academy/secret; do
-        if [ -d "$dir" ]; then
-            perms=$(ls -ld "$dir" | awk '{print $1 " " $3 ":" $4}')
-            echo "   ✓ $dir: $perms"
-        fi
-    done
-    
-    echo "3. Проверка sticky bit:"
-    secret_perms=$(ls -ld /academy/secret | awk '{print $1}')
-    if [[ "$secret_perms" == *"t"* ]] || [[ "$secret_perms" == *"T"* ]]; then
-        echo "   ✓ Sticky bit установлен (права: $secret_perms)"
-    else
-        echo "   ✗ Sticky bit не установлен (права: $secret_perms)"
-    fi
-    
-    echo "4. Проверка программы spy:"
-    echo "Результат работы spy:"
-    sudo -u student /academy/bin/spy
-    
-    echo "5. Проверка защиты top_secret:"
-    if lsattr /academy/secret/top_secret 2>/dev/null | grep -q "i"; then
-        echo "   ✓ top_secret защищен immutable атрибутом"
-        echo "   Проверка удаления:"
-        if rm /academy/secret/top_secret 2>/dev/null; then
-            echo "   ✗ ОШИБКА: top_secret удален!"
-        else
-            echo "   ✓ top_secret невозможно удалить"
-        fi
-    else
-        echo "   ✗ top_secret не защищен"
-    fi
-    
-    echo "   - Очистка старых тестовых файлов:"
-    sudo -u teacher rm -f /academy/secret/teacher_file.txt 2>/dev/null || true
-    sudo -u teacher rm -f /academy/secret/demo_file.txt 2>/dev/null || true
 
-    echo "   - Создаем файл для демонстрации:"
-    sudo -u teacher touch /academy/secret/demo_file.txt
-    echo "Файл для демонстрации удаления" | sudo -u teacher tee /academy/secret/demo_file.txt > /dev/null
-    
-    echo "   - Файлы до удаления:"
-    sudo -u teacher ls -la /academy/secret/ | grep -E "(demo_file|teacher_test|staff_file|top_secret)"
-    
-    echo "   - Студент использует spy для поиска файла:"
-    sudo -u student /academy/bin/spy | grep -A2 -B2 "demo_file"
-    
-    echo "   - Удаление файла demo_file.txt студентом:"
-    if sudo -u student sudo -u teacher rm /academy/secret/demo_file.txt 2>/dev/null; then
-        echo "   ✓ Файл demo_file.txt успешно удален студентом"
-    else
-        echo "   ✗ Ошибка при удалении файла"
-    fi
-    
-    echo "   - Файлы после удаления:"
-    sudo -u teacher ls -la /academy/secret/ | grep -E "(demo_file|teacher_test|staff_file|top_secret)" || echo "   Файл demo_file.txt удален"
-
-    echo "7. Проверка sticky bit защиты:"
-    sudo -u teacher touch /academy/secret/teacher_protected.txt
-    echo "Защищенный файл учителя" | sudo -u teacher tee /academy/secret/teacher_protected.txt > /dev/null
-    
-    echo "   - Прямое удаление студентом (должно быть запрещено):"
-    if sudo -u student rm /academy/secret/teacher_protected.txt 2>/dev/null; then
-        echo "   ✗ ОШИБКА БЕЗОПАСНОСТИ: студент смог удалить чужой файл!"
-    else
-        echo "   ✓ Sticky bit работает: студент не может удалить чужой файл напрямую"
-    fi
-    
-    sudo -u teacher rm -f /academy/secret/teacher_protected.txt
-    
-    log_message "Тестирование академии завершено"
-}
+# test_academy_setup() {
+#    echo "1. Проверка пользователей и групп:"
+#    for user in student teacher staffuser; do
+#        if id "$user" &>/dev/null; then
+#            echo "   ✓ $user: $(id "$user")"
+#        else
+#            echo "   ✗ $user: не найден"
+#        fi
+#    done
+#    
+#    echo "2. Проверка прав директорий:"
+#    for dir in /academy/teachers /academy/students /academy/staff /academy/secret; do
+#        if [ -d "$dir" ]; then
+#            perms=$(ls -ld "$dir" | awk '{print $1 " " $3 ":" $4}')
+#            echo "   ✓ $dir: $perms"
+#        fi
+#    done
+#    
+#    echo "3. Проверка sticky bit:"
+#    secret_perms=$(ls -ld /academy/secret | awk '{print $1}')
+#    if [[ "$secret_perms" == *"t"* ]] || [[ "$secret_perms" == *"T"* ]]; then
+#        echo "   ✓ Sticky bit установлен (права: $secret_perms)"
+#    else
+#        echo "   ✗ Sticky bit не установлен (права: $secret_perms)"
+#    fi
+#    
+#    echo "4. Проверка программы spy:"
+#    echo "Результат работы spy:"
+#    sudo -u student /academy/bin/spy
+#    
+#    echo "5. Проверка защиты top_secret:"
+#    if lsattr /academy/secret/top_secret 2>/dev/null | grep -q "i"; then
+#        echo "   ✓ top_secret защищен immutable атрибутом"
+#        echo "   Проверка удаления:"
+#        if rm /academy/secret/top_secret 2>/dev/null; then
+#            echo "   ✗ ОШИБКА: top_secret удален!"
+#        else
+#            echo "   ✓ top_secret невозможно удалить"
+#        fi
+#    else
+#        echo "   ✗ top_secret не защищен"
+#    fi
+#    
+#    echo "   - Очистка старых тестовых файлов:"
+#    sudo -u teacher rm -f /academy/secret/teacher_file.txt 2>/dev/null || true
+#    sudo -u teacher rm -f /academy/secret/demo_file.txt 2>/dev/null || true
+#
+#    echo "   - Создаем файл для демонстрации:"
+#    sudo -u teacher touch /academy/secret/demo_file.txt
+#    echo "Файл для демонстрации удаления" | sudo -u teacher tee /academy/secret/demo_file.txt > /dev/null
+#    
+#    echo "   - Файлы до удаления:"
+#    sudo -u teacher ls -la /academy/secret/ | grep -E "(demo_file|teacher_test|staff_file|top_secret)"
+#    
+#    echo "   - Студент использует spy для поиска файла:"
+#    sudo -u student /academy/bin/spy | grep -A2 -B2 "demo_file"
+#    
+#    echo "   - Удаление файла demo_file.txt студентом:"
+#    if sudo -u student sudo -u teacher rm /academy/secret/demo_file.txt 2>/dev/null; then
+#        echo "   ✓ Файл demo_file.txt успешно удален студентом"
+#    else
+#        echo "   ✗ Ошибка при удалении файла"
+#    fi
+#    
+#    echo "   - Файлы после удаления:"
+#    sudo -u teacher ls -la /academy/secret/ | grep -E "(demo_file|teacher_test|staff_file|top_secret)" || echo "   Файл demo_file.txt удален"
+#
+#    echo "7. Проверка sticky bit защиты:"
+#    sudo -u teacher touch /academy/secret/teacher_protected.txt
+#    echo "Защищенный файл учителя" | sudo -u teacher tee /academy/secret/teacher_protected.txt > /dev/null
+#    
+#    echo "   - Прямое удаление студентом (должно быть запрещено):"
+#    if sudo -u student rm /academy/secret/teacher_protected.txt 2>/dev/null; then
+#        echo "   ✗ ОШИБКА БЕЗОПАСНОСТИ: студент смог удалить чужой файл!"
+#    else
+#        echo "   ✓ Sticky bit работает: студент не может удалить чужой файл напрямую"
+#    fi
+#    
+#    sudo -u teacher rm -f /academy/secret/teacher_protected.txt
+#    
+#    log_message "Тестирование академии завершено"
+#}
 
 demonstrate_shell_difference() {
     log_message "Демонстрация различий между login и non-login shell"
@@ -711,7 +922,10 @@ setup_special_users
 setup_additional_users
 
 setup_company_home_structure
-test_company_home_structure
+#test_company_home_structure
+
+setup_data_structure
+#test_data_structure
 
 setup_academy_structure
 
