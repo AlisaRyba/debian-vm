@@ -32,3 +32,6 @@ bash systemd-targets-setup.sh
 
 log_message "Запуск setup_bash.sh" 
 bash setup_bash.sh
+
+log_message "Запуск setup_journaling_system.sh" 
+bash setup_journaling_system.sh
