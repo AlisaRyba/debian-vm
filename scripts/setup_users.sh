@@ -154,6 +154,7 @@ setup_academy_structure() {
         "/academy/students" 
         "/academy/staff"
         "/academy/secret"
+        "/academy/bin"
     )
     
     for dir in "${academy_dirs[@]}"; do
@@ -167,6 +168,11 @@ setup_academy_structure() {
     
     create_user "teacher" "/academy/teachers/teacher" "/bin/bash" "teachers"
     usermod -aG academy,staff "teacher"
+    
+    if ! id "staffuser" &>/dev/null; then
+        useradd -m -d "/academy/staff/staffuser" -s /bin/bash -g staff staffuser
+        echo "staffuser:staff123" | chpasswd
+    fi
     
     log_message "Настройка прав доступа к директориям"
     
@@ -188,6 +194,7 @@ setup_academy_structure() {
     log_message "Группа staff получила доступ ко всем директориям академии"
     
     setup_secret_directory
+    create_spy_program
     setup_students_sudo
     test_academy_setup
 }
@@ -196,80 +203,122 @@ setup_secret_directory() {
     log_message "Настройка секретной директории /academy/secret"
     
     chown root:teachers /academy/secret
-    chmod 3770 /academy/secret 
-    log_message "Директория /academy/secret: владелец root:teachers, права 3770"
+    chmod 2770 /academy/secret 
     
-    setfacl -m g:staff:rwx /academy/secret 2>/dev/null || \
-    (log_message "ACL не поддерживается, добавляем staff в teachers" && usermod -aG teachers staff)
+    log_message "Создание тестовых файлов в секретной директории"
     
     sudo -u teacher touch /academy/secret/teacher_test_file.txt
     echo "Это тестовый файл от учителя, создан: $(date)" | sudo -u teacher tee /academy/secret/teacher_test_file.txt > /dev/null
-    log_message "Создан тестовый файл /academy/secret/teacher_test_file.txt от учителя"
+    
+    sudo -u staffuser touch /academy/secret/staff_file.txt
+    echo "Файл от сотрудника staff, создан: $(date)" | sudo -u staffuser tee /academy/secret/staff_file.txt > /dev/null
     
     log_message "Создание файла top_secret с защитой от удаления"
-    echo "Это сверхсекретная информация академии! Даже root не может удалить этот файл." | sudo tee /academy/secret/top_secret > /dev/null
-    sudo chmod 400 /academy/secret/top_secret  
-    sudo chattr +i /academy/secret/top_secret 
-    log_message "Файл top_secret создан с immutable атрибутом"
     
-    create_spy_program
+    sudo -u teacher bash -c "
+        echo 'Это сверхсекретная информация академии! Даже root не может удалить этот файл.' > /academy/teachers/teacher/top_secret_temp
+        cp /academy/teachers/teacher/top_secret_temp /academy/secret/top_secret
+        chmod 400 /academy/secret/top_secret
+        rm -f /academy/teachers/teacher/top_secret_temp
+    "
+    
+    chattr +i /academy/secret/top_secret
+    
+    chmod 3770 /academy/secret
+    log_message "Установлен sticky bit: права 3770 для /academy/secret"
+    
+    setfacl -m g:staff:rwx /academy/secret 2>/dev/null || true
+    
+    setfacl -m g:students:--- /academy/secret 2>/dev/null || true
 }
 
 create_spy_program() {
     log_message "Создание программы spy для студентов"
     
-    cat << 'EOF' > /usr/local/bin/spy
+    mkdir -p /academy/bin
+    
+    cat << 'EOF' > /academy/bin/spy
 #!/bin/bash
 echo "=== SPY PROGRAM - Academy Secret Directory ==="
 echo ""
 
-echo "1. Содержимое директории /academy/secret:"
-sudo -u teacher ls -la /academy/secret/ 2>/dev/null || echo "Доступ запрещен"
+echo "1. Прямая проверка доступа студента:"
+if ls /academy/secret/ >/dev/null 2>&1; then
+    echo "   ✗ ОШИБКА: студент имеет прямой доступ!"
+else
+    echo "   ✓ Студент не имеет прямого доступа (правильно)"
+fi
 
 echo ""
-echo "2. Попытка чтения файлов:"
-for file in /academy/secret/*; do
-    if sudo -u teacher test -f "$file" 2>/dev/null; then
-        filename=$(basename "$file")
-        echo "--- Файл: $filename ---"
-        sudo -u teacher cat "$file" 2>/dev/null || echo "[Содержимое недоступно]"
-        echo ""
-    fi
-done
+echo "2. Проверка доступа через sudo от teacher:"
+if sudo -u teacher test -d /academy/secret 2>/dev/null; then
+    echo "   ✓ Доступ к директории через teacher есть"
+else
+    echo "   ✗ Доступ к директории через teacher запрещен"
+    exit 1
+fi
+
+echo ""
+echo "3. Содержимое директории /academy/secret (через teacher):"
+echo "Файлы в секретной директории:"
+if sudo -u teacher ls -la /academy/secret/ 2>/dev/null; then
+    echo ""
+    echo "4. Содержимое файлов:"
+    files=$(sudo -u teacher ls /academy/secret/ 2>/dev/null)
+    for file in $files; do
+        if sudo -u teacher test -f "/academy/secret/$file" 2>/dev/null; then
+            echo "--- $file ---"
+            if sudo -u teacher cat "/academy/secret/$file" 2>/dev/null; then
+                echo ""
+            else
+                echo "[Не удалось прочитать]"
+                echo ""
+            fi
+        fi
+    done
+else
+    echo "   Не удалось получить список файлов"
+fi
 
 echo "=== КОНЕЦ ОТЧЕТА ==="
 EOF
     
-    chmod 755 /usr/local/bin/spy
-    chown root:root /usr/local/bin/spy
-    log_message "Программа spy создана в /usr/local/bin/spy"
+    chmod 755 /academy/bin/spy
+    chown root:root /academy/bin/spy
+    log_message "Программа spy создана в /academy/bin/spy"
 }
 
 setup_students_sudo() {
     log_message "Настройка sudo прав для студентов"
     
-    cat << EOF > /etc/sudoers.d/students-secret
-# Разрешить студентам просматривать секретную директорию от имени teacher
-%students ALL=(teacher) NOPASSWD: /bin/ls /academy/secret/, /bin/ls /academy/secret/*, /bin/cat /academy/secret/*, /usr/bin/test
+    rm -f /etc/sudoers.d/students-secret
+    
+    cat << 'EOF' > /etc/sudoers.d/students-secret
+%students ALL=(teacher) NOPASSWD: ALL
 
-# Разрешить студентам удалять файлы в секретной директории от имени teacher  
-%students ALL=(teacher) NOPASSWD: /bin/rm /academy/secret/*
+%students ALL=(root) NOPASSWD: /academy/bin/spy
 EOF
     
     chmod 440 /etc/sudoers.d/students-secret
-    log_message "Sudo права для студентов настроены"
+
+    if visudo -c > /dev/null 2>&1; then
+        log_message "Sudoers конфигурация валидна"
+    else
+        log_error "Ошибка в sudoers конфигурации"
+        exit 1
+    fi
 }
 
 test_academy_setup() {
     echo "1. Проверка пользователей и групп:"
-    for user in student teacher; do
+    for user in student teacher staffuser; do
         if id "$user" &>/dev/null; then
             echo "   ✓ $user: $(id "$user")"
         else
             echo "   ✗ $user: не найден"
         fi
     done
-
+    
     echo "2. Проверка прав директорий:"
     for dir in /academy/teachers /academy/students /academy/staff /academy/secret; do
         if [ -d "$dir" ]; then
@@ -277,40 +326,68 @@ test_academy_setup() {
             echo "   ✓ $dir: $perms"
         fi
     done
-
-    echo "3. Проверка программы spy (студент просматривает секретную директорию):"
-    sudo -u student /usr/local/bin/spy
     
-    echo "4. Проверка sudo прав студентов:"
-    sudo -l -U student | grep -A5 -B5 "teacher" || echo "   Нет прав для teacher"
-    
-    echo "5. Проверка защиты файла top_secret:"
-    if lsattr /academy/secret/top_secret 2>/dev/null | grep -q "i"; then
-        echo "   ✓ Файл top_secret защищен атрибутом immutable"
+    echo "3. Проверка sticky bit:"
+    secret_perms=$(ls -ld /academy/secret | awk '{print $1}')
+    if [[ "$secret_perms" == *"t"* ]] || [[ "$secret_perms" == *"T"* ]]; then
+        echo "   ✓ Sticky bit установлен (права: $secret_perms)"
     else
-        echo "   ✗ Файл top_secret не защищен"
+        echo "   ✗ Sticky bit не установлен (права: $secret_perms)"
     fi
-
-    echo "6. ДЕМОНСТРАЦИЯ: Студент находит и удаляет файл учителя"
-    echo "   - Файлы до удаления:"
-    sudo -u teacher ls -la /academy/secret/
     
-    echo "   - Удаление файла teacher_test_file.txt студентом:"
-    if sudo -u student sudo -u teacher rm /academy/secret/teacher_test_file.txt 2>/dev/null; then
-        echo "   ✓ Файл teacher_test_file.txt успешно удален студентом"
+    echo "4. Проверка программы spy:"
+    echo "Результат работы spy:"
+    sudo -u student /academy/bin/spy
+    
+    echo "5. Проверка защиты top_secret:"
+    if lsattr /academy/secret/top_secret 2>/dev/null | grep -q "i"; then
+        echo "   ✓ top_secret защищен immutable атрибутом"
+        echo "   Проверка удаления:"
+        if rm /academy/secret/top_secret 2>/dev/null; then
+            echo "   ✗ ОШИБКА: top_secret удален!"
+        else
+            echo "   ✓ top_secret невозможно удалить"
+        fi
+    else
+        echo "   ✗ top_secret не защищен"
+    fi
+    
+    echo "   - Очистка старых тестовых файлов:"
+    sudo -u teacher rm -f /academy/secret/teacher_file.txt 2>/dev/null || true
+    sudo -u teacher rm -f /academy/secret/demo_file.txt 2>/dev/null || true
+
+    echo "   - Создаем файл для демонстрации:"
+    sudo -u teacher touch /academy/secret/demo_file.txt
+    echo "Файл для демонстрации удаления" | sudo -u teacher tee /academy/secret/demo_file.txt > /dev/null
+    
+    echo "   - Файлы до удаления:"
+    sudo -u teacher ls -la /academy/secret/ | grep -E "(demo_file|teacher_test|staff_file|top_secret)"
+    
+    echo "   - Студент использует spy для поиска файла:"
+    sudo -u student /academy/bin/spy | grep -A2 -B2 "demo_file"
+    
+    echo "   - Удаление файла demo_file.txt студентом:"
+    if sudo -u student sudo -u teacher rm /academy/secret/demo_file.txt 2>/dev/null; then
+        echo "   ✓ Файл demo_file.txt успешно удален студентом"
     else
         echo "   ✗ Ошибка при удалении файла"
     fi
     
     echo "   - Файлы после удаления:"
-    sudo -u teacher ls -la /academy/secret/
+    sudo -u teacher ls -la /academy/secret/ | grep -E "(demo_file|teacher_test|staff_file|top_secret)" || echo "   Файл demo_file.txt удален"
+
+    echo "7. Проверка sticky bit защиты:"
+    sudo -u teacher touch /academy/secret/teacher_protected.txt
+    echo "Защищенный файл учителя" | sudo -u teacher tee /academy/secret/teacher_protected.txt > /dev/null
     
-    echo "7. Попытка удалить top_secret (должно быть невозможно):"
-    if sudo rm /academy/secret/top_secret 2>/dev/null; then
-        echo "   ✗ ОШИБКА БЕЗОПАСНОСТИ: top_secret был удален!"
+    echo "   - Прямое удаление студентом (должно быть запрещено):"
+    if sudo -u student rm /academy/secret/teacher_protected.txt 2>/dev/null; then
+        echo "   ✗ ОШИБКА БЕЗОПАСНОСТИ: студент смог удалить чужой файл!"
     else
-        echo "   ✓ top_secret защищен от удаления (как и задумано)"
+        echo "   ✓ Sticky bit работает: студент не может удалить чужой файл напрямую"
     fi
+    
+    sudo -u teacher rm -f /academy/secret/teacher_protected.txt
     
     log_message "Тестирование академии завершено"
 }
