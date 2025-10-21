@@ -12,6 +12,9 @@ bash setup_base.sh
 log_message "Запуск setup_users.sh" 
 bash setup_users.sh
 
+log_message "Запуск setup_acl.sh" 
+bash setup_acl.sh
+
 log_message "Запуск setup_services.sh"
 bash setup_services.sh
 
